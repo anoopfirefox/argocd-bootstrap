@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      db: mysql # has to match .spec.template.metadata.labels
+  serviceName: "mysql-server"
+  #podManagementPolicy: Parallel #(default: Ordered)
+  replicas: 3 # by default is 1
+  template:
+    metadata:
+      labels:
+        db: mysql # has to match .spec.selector.matchLabels
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+          name: db
+        volumeMounts:
+        - name: db-data
+          mountPath: /var/lib/mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysqldb-secret
+              key: mysql_root_passwd
+        - name: MYSQL_ROOT_HOST
+          value: '%'
+        livenessProbe:
+          exec:
+            command:
+              - bash
+              - "-c"
+              - mysqladmin -uroot -p$MYSQL_ROOT_PASSWORD ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            # Check we can execute queries over TCP (skip-networking is off).
+            command:
+              - bash
+              - "-c"
+              - mysql -hlocalhost -uroot -p$MYSQL_ROOT_PASSWORD -e "SELECT 1"
+          initialDelaySeconds: 5
+          periodSeconds: 2
+          timeoutSeconds: 1
+  volumeClaimTemplates:
+  - metadata:
+      name: db-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: manual
+      resources:
+        requests:
+          storage: 500Mi
